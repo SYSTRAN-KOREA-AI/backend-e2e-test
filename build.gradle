@@ -1,0 +1,52 @@
+plugins {
+	id 'java'
+	id 'groovy'
+	id 'org.springframework.boot' version '3.5.5'
+	id 'io.spring.dependency-management' version '1.1.7'
+}
+
+group = 'com.systran'
+version = '0.0.1-SNAPSHOT'
+description = 'Demo project for Spring Boot'
+
+java {
+	toolchain {
+		languageVersion = JavaLanguageVersion.of(21)
+	}
+}
+
+repositories {
+	mavenCentral()
+}
+
+dependencies {
+	implementation 'org.springframework.boot:spring-boot-starter-web'
+	implementation 'org.springframework.boot:spring-boot-starter-websocket'
+	compileOnly 'org.projectlombok:lombok'
+	annotationProcessor 'org.projectlombok:lombok'
+	testImplementation 'org.springframework.boot:spring-boot-starter-test'
+	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+	annotationProcessor "org.springframework.boot:spring-boot-configuration-processor"
+
+	// spock test
+	testImplementation 'org.apache.groovy:groovy:4.0.18'
+	testImplementation 'org.spockframework:spock-core:2.4-M1-groovy-4.0'
+	testImplementation 'org.spockframework:spock-spring:2.4-M1-groovy-4.0'
+	testCompileOnly 'org.projectlombok:lombok'
+	testAnnotationProcessor 'org.projectlombok:lombok'
+
+	// test websocket
+	implementation 'org.springframework:spring-websocket'
+	implementation 'org.springframework:spring-messaging'
+	implementation 'org.glassfish.tyrus.bundles:tyrus-standalone-client:2.1.5'
+
+	// utils
+	testImplementation 'com.fasterxml.jackson.core:jackson-databind'
+
+	implementation 'org.glassfish.tyrus:tyrus-client:2.1.5' // 최신 버전 확인
+	implementation 'org.glassfish.tyrus:tyrus-container-grizzly-client:2.1.5' // 최신 버전 확인
+}
+
+tasks.named('test') {
+	useJUnitPlatform()
+}
