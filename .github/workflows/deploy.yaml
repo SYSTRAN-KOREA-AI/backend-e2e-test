@@ -26,6 +26,7 @@ jobs:
         run: ls -alh build/libs
 
       - name: Build Docker Image
+        working-directory: ${{ github.workspace }}
         run: |
           docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/e2e-test:latest .
 
