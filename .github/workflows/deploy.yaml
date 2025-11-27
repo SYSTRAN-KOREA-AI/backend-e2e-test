@@ -22,8 +22,10 @@ jobs:
       - name: Build JAR
         run: ./gradlew clean build
 
-      - name: Show JARs
-        run: ls -alh build/libs
+      - name: Docker Login
+        run: |
+          echo "${{ secrets.DOCKERHUB_TOKEN }}" \
+            | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
 
       - name: Build Docker Image
         #working-directory: ${{ github.workspace }}
@@ -64,8 +66,8 @@ jobs:
       - name: Deploy to DEV Server
         uses: appleboy/ssh-action@v1.2.0
         with:
-          host: ${{ secrets.DEV_SERVER_HOST }}
-          username: ${{ secrets.DEV_SERVER_USER }}
+          host: ${{ vars.DEV_SERVER_HOST }}
+          username: ${{ vars.DEV_SERVER_USER }}
           key: ${{ secrets.DEV_SERVER_SSH_KEY }}
           script: |
             echo "[1] 이동"
