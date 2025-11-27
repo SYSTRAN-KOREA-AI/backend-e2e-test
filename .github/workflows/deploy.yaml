@@ -1,43 +1,32 @@
-name: Deploy E2E Test
+name: Deploy
 
 on:
   push:
     branches: [ main ]
 
 jobs:
-  build_and_push:
+  build:
     runs-on: ubuntu-latest
 
     steps:
-
-      # 1) Checkout
-      - name: Checkout Repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      # 2) JDK 설치 (Java 21)
       - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 21
 
-      # 3) Gradle 빌드
       - name: Build JAR
-        run: ./gradlew clean build -x test
+        run: ./gradlew clean build
 
-      - name: List built JARs
+      - name: Show JARs
         run: ls -alh build/libs
 
-      # 4) DockerHub 로그인
-      - name: Login to DockerHub
-        run: |
-          echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
-
-      # 5) Docker 이미지 Build
       - name: Build Docker Image
-        working-directory: ./backend-e2e-test
         run: |
-          docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/e2e-test:latest .
+          docker build -t ${{ vars.DOCKERHUB_USERNAME }}/e2e-test:latest .
 
       # 6) DockerHub에 Push
       - name: Push Docker image
