@@ -35,6 +35,7 @@ jobs:
 
       # 5) Docker 이미지 Build
       - name: Build Docker Image
+        working-directory: ./backend-e2e-test
         run: |
           docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/e2e-test:latest .
 
