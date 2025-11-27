@@ -67,9 +67,9 @@ e2e-test 서버에서 Voice 서버로 보내는 오디오 파일 사양입니다
 동시 요청 수가 많아지면서 부하 테스트 목적과 상관없는 Query 지연 시간이 발생하여 
 Access Token을 직접 발급받아 YML 파일에 하드코딩하는 방식으로 테스트 진행
 
-1. http://192.168.0.27:8889/docs 에서 /token API를 통해 토큰 발급
- - username: user123@example.com
- - password: aA!23456
+1. "" 에서 /token API를 통해 토큰 발급
+ - username: ""
+ - password: ""
 2. `application.yml` & `application-test.yml`에 `test.jwt.token` 항목에 발급 받은 토큰 기입
 
 ---
