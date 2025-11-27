@@ -47,6 +47,10 @@ dependencies {
 	implementation 'org.glassfish.tyrus:tyrus-container-grizzly-client:2.1.5' // 최신 버전 확인
 }
 
+jar {
+	archiveFileName = "e2e-test.jar"
+}
+
 tasks.named('test') {
 	useJUnitPlatform()
 }
