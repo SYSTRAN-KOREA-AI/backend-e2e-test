@@ -23,7 +23,10 @@ jobs:
 
       # 3) Gradle 빌드
       - name: Build JAR
-        run: ./gradlew bootJar
+        run: ./gradlew clean build -x test
+
+      - name: List built JARs
+        run: ls -alh build/libs
 
       # 4) DockerHub 로그인
       - name: Login to DockerHub
