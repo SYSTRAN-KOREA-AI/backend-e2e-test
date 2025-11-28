@@ -66,9 +66,10 @@ jobs:
       - name: Deploy to DEV Server
         uses: appleboy/ssh-action@v1.2.0
         with:
-          host: ${{ vars.DEV_SERVER_HOST }}
+          host: ${{ secrets.DEV_SERVER_HOST }}
           username: ${{ vars.DEV_SERVER_USER }}
           key: ${{ secrets.DEV_SERVER_SSH_KEY }}
+          port: ${{ secrets.DEV_SERVER_PORT }}
           script: |
             echo "[1] 이동"
             cd /opt/business_meeting/e2e-test
