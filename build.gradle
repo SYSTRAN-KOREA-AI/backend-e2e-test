@@ -19,6 +19,14 @@ repositories {
 	mavenCentral()
 }
 
+bootJar {
+	archiveFileName = "e2e-test.jar"
+}
+
+jar {
+	enabled = false
+}
+
 dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-web'
 	implementation 'org.springframework.boot:spring-boot-starter-websocket'
@@ -45,10 +53,6 @@ dependencies {
 
 	implementation 'org.glassfish.tyrus:tyrus-client:2.1.5' // 최신 버전 확인
 	implementation 'org.glassfish.tyrus:tyrus-container-grizzly-client:2.1.5' // 최신 버전 확인
-}
-
-jar {
-	archiveFileName = "e2e-test.jar"
 }
 
 tasks.named('test') {
