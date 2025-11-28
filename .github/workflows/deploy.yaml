@@ -19,6 +19,9 @@ jobs:
           distribution: temurin
           java-version: 21
 
+      - name: application.yaml 파일 만들기
+        run: echo "${{ secrets.APP_YML }}" > ./src/main/resources/application.yml
+
       - name: Build JAR
         run: ./gradlew clean bootJar
 
