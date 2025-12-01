@@ -151,7 +151,7 @@ jobs:
             echo "HOST=${{ secrets.SERVER_27_HOST }}" >> $GITHUB_ENV
             echo "PORT=${{ secrets.SERVER_27_PORT }}" >> $GITHUB_ENV
             echo "USER=${{ secrets.SERVER_27_USER }}" >> $GITHUB_ENV
-            echo "KEY=${{ secrets.SERVER_27_KEY }}" > private_key
+            printf "%s" "${{ secrets.SERVER_27_KEY }}" > private_key
           elif [ "${{ github.event.inputs.target_env }}" = "28" ]; then
             echo "HOST=${{ secrets.SERVER_28_HOST }}" >> $GITHUB_ENV
             echo "PORT=${{ secrets.SERVER_28_PORT }}" >> $GITHUB_ENV
