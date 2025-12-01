@@ -5,10 +5,12 @@ on:
   pull_request:
     # 이벤트 세부 타입 정보
     types: [opened, synchronize]
-    branches: [main]
     paths:
       - "**"
       - "!*.md"
+  push:
+    branches:
+      - main
 
 jobs:
   test:
