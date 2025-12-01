@@ -3,6 +3,8 @@ name: Deploy E2E Test
 on:
   # push, pr, issue, workflow_dispatch(수동 트리거), schedule(cron) 등 다양한 이벤트 있음
   pull_request:
+    branches:
+      - dev
     # 이벤트 세부 타입 정보
     types: [opened, synchronize]
     paths:
@@ -35,11 +37,7 @@ jobs:
 
       # Config Cache + daemon + parallel build 적용
       - name: Build with Gradle (Config Cache Enabled)
-        run: |
-          ./gradlew clean build \
-            --configuration-cache \
-            --parallel \
-            --daemon
+        run: ./gradlew test --parallel --daemon --configuration-cache
 
       - name: Set up JDK 21
         uses: actions/setup-java@v4
@@ -72,11 +70,7 @@ jobs:
 
       # Config Cache + daemon + parallel build 적용
       - name: Build with Gradle (Config Cache Enabled)
-        run: |
-          ./gradlew clean build \
-            --configuration-cache \
-            --parallel \
-            --daemon
+        run: ./gradlew clean bootJar --parallel --daemon --configuration-cache
 
       - name: Set up JDK 21
         uses: actions/setup-java@v4
