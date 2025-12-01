@@ -1,20 +1,24 @@
 name: Deploy E2E Test
 
 on:
-  # push, pr, issue, workflow_dispatch(수동 트리거), schedule(cron) 등 다양한 이벤트 있음
   pull_request:
     branches:
       - dev
-    # 이벤트 세부 타입 정보
     types: [opened, synchronize]
     paths:
       - "**"
       - "!*.md"
+
   workflow_dispatch:
     inputs:
       target_env:
+        description: "배포할 서버 번호 선택 (26/27/28)"
+        required: true
         type: choice
-        options: [ 26, 27, 28 ]
+        options:
+          - 26
+          - 27
+          - 28
 
 jobs:
   test:
