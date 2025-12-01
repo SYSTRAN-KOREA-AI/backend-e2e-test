@@ -10,11 +10,9 @@ on:
     paths:
       - "**"
       - "!*.md"
-  workflow_dispatch:
-    inputs:
-      target_env:
-        type: choice
-        options: [ 26, 27, 28 ]
+  push:
+    branches:
+      - main
 
 jobs:
   test:
@@ -51,7 +49,7 @@ jobs:
         run: ./gradlew test
 
   build_and_push:
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -135,34 +133,14 @@ jobs:
     needs: build_and_push
 
     steps:
-      # 1) 서버 매핑 SERVER_26_HOST
-      - name: Map server env
-        run: |
-          if [ "${{ github.event.inputs.target_env }}" = "26" ]; then
-            echo "HOST=${{ secrets.SERVER_26_HOST }}" >> $GITHUB_ENV
-            echo "PORT=${{ secrets.SERVER_26_PORT }}" >> $GITHUB_ENV
-            echo "USER=${{ secrets.SERVER_26_USER }}" >> $GITHUB_ENV
-            echo "KEY=${{ secrets.SERVER_26_KEY }}" >> $GITHUB_ENV
-          elif [ "${{ github.event.inputs.target_env }}" = "27" ]; then
-            echo "HOST=${{ secrets.SERVER_27_HOST }}" >> $GITHUB_ENV
-            echo "PORT=${{ secrets.SERVER_27_PORT }}" >> $GITHUB_ENV
-            echo "USER=${{ secrets.SERVER_27_USER }}" >> $GITHUB_ENV
-            echo "KEY=${{ secrets.SERVER_27_KEY }}" >> $GITHUB_ENV
-          elif [ "${{ github.event.inputs.target_env }}" = "28" ]; then
-            echo "HOST=${{ secrets.SERVER_28_HOST }}" >> $GITHUB_ENV
-            echo "PORT=${{ secrets.SERVER_28_PORT }}" >> $GITHUB_ENV
-            echo "USER=${{ secrets.SERVER_28_USER }}" >> $GITHUB_ENV
-            echo "KEY=${{ secrets.SERVER_28_KEY }}" >> $GITHUB_ENV
-          fi
-
-      # 2) SSH로 DEV 서버 접속
+      # 1) SSH로 DEV 서버 접속
       - name: Deploy to DEV Server
         uses: appleboy/ssh-action@v1.2.0
         with:
-          host: ${{ env.HOST }}
-          username: ${{ env.USER }}
-          key: ${{ env.KEY }}
-          port: ${{ env.PORT }}
+          host: ${{ secrets.DEV_SERVER_HOST }}
+          username: ${{ vars.DEV_SERVER_USER }}
+          key: ${{ secrets.DEV_SERVER_SSH_KEY }}
+          port: ${{ secrets.DEV_SERVER_PORT }}
           script: |
             echo "[1] 이동"
             cd /opt/business_meeting/e2e-test
