@@ -146,18 +146,20 @@ jobs:
             echo "HOST=${{ secrets.SERVER_26_HOST }}" >> $GITHUB_ENV
             echo "PORT=${{ secrets.SERVER_26_PORT }}" >> $GITHUB_ENV
             echo "USER=${{ secrets.SERVER_26_USER }}" >> $GITHUB_ENV
-            echo "KEY=${{ secrets.SERVER_26_KEY }}" >> $GITHUB_ENV
+            echo "${{ secrets.SERVER_26_KEY }}" > private_key
           elif [ "${{ github.event.inputs.target_env }}" = "27" ]; then
             echo "HOST=${{ secrets.SERVER_27_HOST }}" >> $GITHUB_ENV
             echo "PORT=${{ secrets.SERVER_27_PORT }}" >> $GITHUB_ENV
             echo "USER=${{ secrets.SERVER_27_USER }}" >> $GITHUB_ENV
-            echo "KEY=${{ secrets.SERVER_27_KEY }}" >> $GITHUB_ENV
+            echo "KEY=${{ secrets.SERVER_27_KEY }}" > private_key
           elif [ "${{ github.event.inputs.target_env }}" = "28" ]; then
             echo "HOST=${{ secrets.SERVER_28_HOST }}" >> $GITHUB_ENV
             echo "PORT=${{ secrets.SERVER_28_PORT }}" >> $GITHUB_ENV
             echo "USER=${{ secrets.SERVER_28_USER }}" >> $GITHUB_ENV
-            echo "KEY=${{ secrets.SERVER_28_KEY }}" >> $GITHUB_ENV
+            echo "KEY=${{ secrets.SERVER_28_KEY }}" > private_key
           fi
+          
+          chmod 600 private_key
 
       # 2) SSH로 DEV 서버 접속
       - name: Deploy to DEV Server
@@ -165,7 +167,7 @@ jobs:
         with:
           host: ${{ env.HOST }}
           username: ${{ env.USER }}
-          key: ${{ env.KEY }}
+          key: private_key
           port: ${{ env.PORT }}
           script: |
             echo "[1] 이동"
