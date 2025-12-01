@@ -56,6 +56,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Cache Gradle
         uses: actions/cache@v3
@@ -102,6 +104,12 @@ jobs:
       - name: Build Docker Image
         # github.workspace: 현재 Workflow 실행에서 체크아웃된 소스코드가 담긴 절대 경로
         run: |
+          echo "[DEBUG] Current directory:"
+          pwd
+          
+          echo "[DEBUG] Workspace files:"
+          ls -al ${{ github.workspace }}
+          
           docker build \
             -t ${{ secrets.DOCKERHUB_USERNAME }}/e2e-test:latest \
             -f ${{ github.workspace }}/Dockerfile \
