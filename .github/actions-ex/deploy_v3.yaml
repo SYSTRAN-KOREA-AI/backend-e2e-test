@@ -105,6 +105,22 @@ jobs:
             echo "[DEBUG] Workspace files:"
             ls -al ${{ github.workspace }}
 
+        - name: Docker Login
+          run: |
+            echo "${{ secrets.DOCKERHUB_TOKEN }}" \
+              | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
+
+
+        - name: Build Docker Image
+          # github.workspace: 현재 Workflow 실행에서 체크아웃된 소스코드가 담긴 절대 경로
+          run: |
+            echo "[DEBUG] Current directory:"
+            pwd
+
+            echo "[DEBUG] Workspace files:"
+            ls -al ${{ github.workspace }}
+
+>>>>>>> af3a3af (feat: 스크립트 수정17)
             docker build \
               -t ${{ secrets.DOCKERHUB_USERNAME }}/e2e-test:latest \
               -f ${{ github.workspace }}/Dockerfile \
