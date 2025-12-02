@@ -25,10 +25,10 @@ jobs:
     uses: SYSTRAN-KOREA-AI/.github/workflows/deploy-spring-template.yml@main
     with:
       SERVICE: ${{ github.event.inputs.service }}
+    secrets:
       HOST: ${{ secrets.SERVER_195_HOST }}
       PORT: ${{ secrets.SERVER_195_PORT }}
       USER: ${{ secrets.SERVER_195_USER }}
-    secrets:
       KEY: ${{ secrets.SERVER_195_KEY }}
       DOCKER_USER: ${{ secrets.DOCKERHUB_USERNAME }}
       DOCKER_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -39,10 +39,10 @@ jobs:
     uses: SYSTRAN-KOREA-AI/.github/workflows/deploy-spring-template.yml@main
     with:
       SERVICE: ${{ github.event.inputs.service }}
+    secrets:
       HOST: ${{ secrets.SERVER_26_HOST }}
       PORT: ${{ secrets.SERVER_26_PORT }}
       USER: ${{ secrets.SERVER_26_USER }}
-    secrets:
       KEY: ${{ secrets.SERVER_26_KEY }}
       DOCKER_USER: ${{ secrets.DOCKERHUB_USERNAME }}
       DOCKER_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -53,10 +53,10 @@ jobs:
     uses: SYSTRAN-KOREA-AI/.github/workflows/deploy-spring-template.yml@main
     with:
       SERVICE: ${{ github.event.inputs.service }}
+    secrets:
       HOST: ${{ secrets.SERVER_27_HOST }}
       PORT: ${{ secrets.SERVER_27_PORT }}
       USER: ${{ secrets.SERVER_27_USER }}
-    secrets:
       KEY: ${{ secrets.SERVER_27_KEY }}
       DOCKER_USER: ${{ secrets.DOCKERHUB_USERNAME }}
       DOCKER_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
