@@ -1,210 +1,63 @@
-name: Deploy E2E Test
+name: Backend Deployment
 
 on:
-  pull_request:
-    branches:
-      - dev
-    types: [opened, synchronize]
-    paths:
-      - "**"
-      - "!*.md"
-
   workflow_dispatch:
     inputs:
-      target_env:
-        description: "배포할 서버 번호 선택 (26/27/28)"
+      server:
+        description: "배포할 서버를 선택하세요."
+        required: true
+        type: choice
+        options: ["195", "26", "27"]
+      service:
+        description: "배포할 서비스를 선택하세요."
         required: true
         type: choice
         options:
-          - 26
-          - 27
-          - 28
+          - "voice-gateway"
+          - "text-retriever"
+          - "translation-bridge"
+          - "e2e-test"
 
 jobs:
-  test:
-    if: github.event_name == 'pull_request'
-    # Runner (해당 스크립트가 실행되는 주체): 현재는 Github Cloud Runner 사용 / Self hosted Runner 전환 가능
-    # OS: Linux, Window, MAC OS 사용 가능
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+  # 참고: 서버별로 Job을 분리하는 것은 GitHub Secrets의 동적 이름 생성이 불가능하기에 타당한 구조입니다.
+  deploy-195:
+    if: github.event.inputs.server == '195'
+    uses: SYSTRAN-KOREA-AI/.github/workflows/deploy-spring-template.yml@main
+    with:
+      SERVICE: ${{ github.event.inputs.service }}
+      HOST: ${{ secrets.SERVER_195_HOST }}
+      PORT: ${{ secrets.SERVER_195_PORT }}
+      USER: ${{ secrets.SERVER_195_USER }}
+    secrets:
+      KEY: ${{ secrets.SERVER_195_KEY }}
+      DOCKER_USER: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKER_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+      APP_YML: ${{ secrets.APP_YML }}
 
-      - name: Cache Gradle
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-            **/.gradle/config-cache
-          key: gradle-cache-${{ runner.os }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-          restore-keys: |
-            gradle-cache-
+  deploy-26:
+    if: github.event.inputs.server == '26'
+    uses: SYSTRAN-KOREA-AI/.github/workflows/deploy-spring-template.yml@main
+    with:
+      SERVICE: ${{ github.event.inputs.service }}
+      HOST: ${{ secrets.SERVER_26_HOST }}
+      PORT: ${{ secrets.SERVER_26_PORT }}
+      USER: ${{ secrets.SERVER_26_USER }}
+    secrets:
+      KEY: ${{ secrets.SERVER_26_KEY }}
+      DOCKER_USER: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKER_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+      APP_YML: ${{ secrets.APP_YML }}
 
-      # Config Cache + daemon + parallel build 적용
-      - name: Build with Gradle (Config Cache Enabled)
-        run: ./gradlew test --parallel --daemon --configuration-cache
-
-      - name: Set up JDK 21
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: 21
-
-      - name: run test
-        run: ./gradlew test
-
-#  build_and_push:
-#    if: github.event_name == 'workflow_dispatch'
-#    runs-on: ubuntu-latest
-#    steps:
-#      - name: Checkout
-#        uses: actions/checkout@v4
-#        with:
-#          fetch-depth: 0
-#
-#      - name: Cache Gradle
-#        uses: actions/cache@v3
-#        with:
-#          path: |
-#            ~/.gradle/caches
-#            ~/.gradle/wrapper
-#            **/.gradle/config-cache
-#          key: gradle-cache-${{ runner.os }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-#          restore-keys: |
-#            gradle-cache-
-#
-#      # Config Cache + daemon + parallel build 적용
-#      - name: Build with Gradle (Config Cache Enabled)
-#        run: ./gradlew clean bootJar --parallel --daemon --configuration-cache
-#
-#      - name: Set up JDK 21
-#        uses: actions/setup-java@v4
-#        with:
-#          distribution: temurin
-#          java-version: 21
-#
-#      - name: application.yaml 파일 만들기
-#        run: echo "${{ secrets.APP_YML }}" > ./src/main/resources/application.yml
-#
-#      - name: Build JAR
-#        run: ./gradlew clean bootJar
-#
-#      - name: Docker Login
-#        run: |
-#          echo "${{ secrets.DOCKERHUB_TOKEN }}" \
-#            | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
-#
-#      - name: Build Docker Image
-#        # github.workspace: 현재 Workflow 실행에서 체크아웃된 소스코드가 담긴 절대 경로
-#        run: |
-#          echo "[DEBUG] Current directory:"
-#          pwd
-#
-#          echo "[DEBUG] Workspace files:"
-#          ls -al ${{ github.workspace }}
-#
-#          docker build \
-#            -t ${{ secrets.DOCKERHUB_USERNAME }}/e2e-test:latest \
-#            -f ${{ github.workspace }}/Dockerfile \
-#            ${{ github.workspace }}
-#
-#      # 1) DockerHub에 Push
-#      - name: Push Docker image
-#        run: |
-#          docker push ${{ secrets.DOCKERHUB_USERNAME }}/e2e-test:latest
-#
-#      # 2) DockerHub 이전 이미지 삭제
-#      - name: Cleanup old Docker Hub tags (keep only latest)
-#        run: |
-#          TAGS=$(curl -s "https://hub.docker.com/v2/repositories/${{ secrets.DOCKERHUB_USERNAME }}/e2e-test/tags?page_size=100" \
-#            | jq -r '.results[].name')
-#
-#          for TAG in $TAGS; do
-#            if [ "$TAG" != "latest" ]; then
-#              echo "Deleting tag: $TAG"
-#              curl -s -X DELETE \
-#                -H "Authorization: Bearer ${{ secrets.DOCKERHUB_TOKEN }}" \
-#                "https://hub.docker.com/v2/repositories/${{ secrets.DOCKERHUB_USERNAME }}/e2e-test/tags/$TAG/" \
-#                > /dev/null
-#            fi
-#          done
-#
-#      # 3) GitHub Actions 로컬 이미지/캐시 정리
-#      - name: Cleanup local Docker cache
-#        run: docker system prune -af --volumes
-
-  deploy_to_dev:
-    if: github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
-
-
-
-    steps:
-      - name: DEBUG INPUT
-        run: echo "INPUT_ENV='${{ github.event.inputs.target_env }}'"
-
-      # 1) 서버 매핑 SERVER_26_HOST
-      - name: Map server env
-        run: |
-          if [ "${{ github.event.inputs.target_env }}" = "26" ]; then
-            echo "HOST=${{ secrets.SERVER_26_HOST }}" >> $GITHUB_ENV
-            echo "PORT=${{ secrets.SERVER_26_PORT }}" >> $GITHUB_ENV
-            echo "USER=${{ secrets.SERVER_26_USER }}" >> $GITHUB_ENV
-            echo "${{ secrets.SERVER_26_KEY }}" > private_key
-          elif [ "${{ github.event.inputs.target_env }}" = "27" ]; then
-            echo "HOST=${{ secrets.SERVER_27_HOST }}" >> $GITHUB_ENV
-            echo "PORT=${{ secrets.SERVER_27_PORT }}" >> $GITHUB_ENV
-            echo "USER=${{ secrets.SERVER_27_USER }}" >> $GITHUB_ENV
-            echo "${{ secrets.SERVER_27_KEY }}" | base64 -d > private_key
-          elif [ "${{ github.event.inputs.target_env }}" = "28" ]; then
-            echo "HOST=${{ secrets.SERVER_28_HOST }}" >> $GITHUB_ENV
-            echo "PORT=${{ secrets.SERVER_28_PORT }}" >> $GITHUB_ENV
-            echo "USER=${{ secrets.SERVER_28_USER }}" >> $GITHUB_ENV
-            echo "KEY=${{ secrets.SERVER_28_KEY }}" > private_key
-          fi
-          
-          chmod 600 private_key
-
-      - name: Read private key
-        run: |
-          PRIVATE_KEY=$(cat private_key)
-          echo "PRIVATE_KEY<<EOF" >> $GITHUB_ENV
-          echo "$PRIVATE_KEY" >> $GITHUB_ENV
-          echo "EOF" >> $GITHUB_ENV
-
-      # 2) SSH로 DEV 서버 접속
-      - name: Deploy to DEV Server
-        uses: appleboy/ssh-action@v1.2.0
-        with:
-          host: ${{ env.HOST }}
-          username: ${{ env.USER }}
-          key: ${{ env.PRIVATE_KEY }}
-          port: ${{ env.PORT }}
-          script: |
-            echo "[1] 이동"
-            cd /opt/business_meeting/e2e-test
-            
-            echo "[2] 최신 이미지 Pull"
-            docker pull ${{ secrets.DOCKERHUB_USERNAME }}/e2e-test:latest
-            
-            echo "[3] Compose 재기동"
-            docker compose down
-            docker compose up -d
-            
-            echo "[4] 이미지명 자동 추출"
-            IMAGE_NAME="${{ secrets.DOCKERHUB_USERNAME }}/e2e-test"
-            echo " - 사용 이미지명: $IMAGE_NAME"
-  
-            echo "[5] ${IMAGE_NAME} 의 'latest' 제외 모든 태그 삭제"
-            docker images "$IMAGE_NAME" \
-              --format "{{.Repository}}:{{.Tag}} {{.ID}}" \
-              | grep -v "latest" \
-              | awk '{print $2}' \
-              | xargs -r docker rmi -f
-            
-            echo "[6] Docker 시스템 정리"
-            docker system prune -af --volumes
-            
-            echo "[7] 상태 확인"
-            docker ps
+  deploy-27:
+    if: github.event.inputs.server == '27'
+    uses: SYSTRAN-KOREA-AI/.github/workflows/deploy-spring-template.yml@main
+    with:
+      SERVICE: ${{ github.event.inputs.service }}
+      HOST: ${{ secrets.SERVER_27_HOST }}
+      PORT: ${{ secrets.SERVER_27_PORT }}
+      USER: ${{ secrets.SERVER_27_USER }}
+    secrets:
+      KEY: ${{ secrets.SERVER_27_KEY }}
+      DOCKER_USER: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKER_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+      APP_YML: ${{ secrets.APP_YML }}
