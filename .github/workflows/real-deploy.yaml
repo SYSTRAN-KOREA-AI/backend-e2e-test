@@ -138,7 +138,12 @@ jobs:
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
 
+
+
     steps:
+      - name: DEBUG INPUT
+        run: echo "INPUT_ENV='${{ github.event.inputs.target_env }}'"
+
       # 1) 서버 매핑 SERVER_26_HOST
       - name: Map server env
         run: |
