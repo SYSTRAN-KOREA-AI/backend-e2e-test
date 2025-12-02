@@ -1,5 +1,4 @@
 name: Deploy E2E Test
-
 on:
   # push, pr, issue, workflow_dispatch(수동 트리거), schedule(cron) 등 다양한 이벤트 있음
   pull_request:
