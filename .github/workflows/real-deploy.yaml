@@ -161,6 +161,9 @@ jobs:
           
           chmod 600 private_key
 
+      - name: 프라이빗 키
+        run: cat private_key
+
       # 2) SSH로 DEV 서버 접속
       - name: Deploy to DEV Server
         uses: appleboy/ssh-action@v1.2.0
