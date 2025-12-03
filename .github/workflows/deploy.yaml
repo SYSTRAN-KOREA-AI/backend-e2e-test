@@ -52,7 +52,7 @@ jobs:
           } >> $GITHUB_OUTPUT
 
   deploy:
-    uses: SYSTRAN-KOREA-AI/.github/.github/workflows/deploy-spring-template.yml@5e704fe5d8e6d7290f00356fa8a3d3cc73c6afa2
+    uses: SYSTRAN-KOREA-AI/.github/.github/workflows/deploy-spring-template.yml@main
     needs: prepare
     with:
       service_name: e2e-test
