@@ -1,0 +1,27 @@
+name: E2E-Test Backend Deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      server:
+        description: "배포할 서버 선택"
+        required: true
+        type: choice
+        options: ["27", "26", "195"]
+
+jobs:
+  e2e-test-secrets:
+    uses: SYSTRAN-KOREA-AI/.github/.github/workflows/deploy-spring-template.yml@main
+    with:
+      SERVICE_NAME: e2e-test
+    secrets:
+      # Pass static secrets directly
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+      APP_YML: ${{ secrets.APP_YML }}
+
+      # Conditionally pass server-specific secrets based on user input
+      PREFIX_HOST: ${{ github.event.inputs.server == '195' && secrets.SERVER_195_HOST || github.event.inputs.server == '26' && secrets.SERVER_26_HOST || secrets.SERVER_27_HOST }}
+      PREFIX_PORT: ${{ github.event.inputs.server == '195' && secrets.SERVER_195_PORT || github.event.inputs.server == '26' && secrets.SERVER_26_PORT || secrets.SERVER_27_PORT }}
+      PREFIX_USER: ${{ github.event.inputs.server == '195' && secrets.SERVER_195_USER || github.event.inputs.server == '26' && secrets.SERVER_26_USER || secrets.SERVER_27_USER }}
+      BASE64_KEY: ${{ github.event.inputs.server == '195' && secrets.SERVER_195_KEY || github.event.inputs.server == '26' && secrets.SERVER_26_KEY || secrets.SERVER_27_KEY }}
