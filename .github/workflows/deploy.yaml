@@ -12,7 +12,7 @@ on:
 jobs:
   deploy-195:
     if: github.event.inputs.server == '195'
-    uses: SYSTRAN-KOREA-AI/.github/.github/workflows/deploy-spring-template.yml@main
+    uses: SYSTRAN-KOREA-AI/.github/.github/workflows/deploy-spring-template.yml@ba62d70a3b13f750a37b77b490508932a2ea91e6
     with:
       service_name: e2e-test
       target_host: ${{ secrets.SERVER_195_HOST }}
@@ -26,7 +26,7 @@ jobs:
 
   deploy-26:
     if: github.event.inputs.server == '26'
-    uses: SYSTRAN-KOREA-AI/.github/.github/workflows/deploy-spring-template.yml@main
+    uses: SYSTRAN-KOREA-AI/.github/.github/workflows/deploy-spring-template.yml@ba62d70a3b13f750a37b77b490508932a2ea91e6
     with:
       service_name: e2e-test
       target_host: ${{ secrets.SERVER_26_HOST }}
@@ -40,7 +40,7 @@ jobs:
 
   deploy-27:
     if: github.event.inputs.server == '27'
-    uses: SYSTRAN-KOREA-AI/.github/.github/workflows/deploy-spring-template.yml@main
+    uses: SYSTRAN-KOREA-AI/.github/.github/workflows/deploy-spring-template.yml@ba62d70a3b13f750a37b77b490508932a2ea91e6
     with:
       service_name: e2e-test
       target_host: ${{ secrets.SERVER_27_HOST }}
