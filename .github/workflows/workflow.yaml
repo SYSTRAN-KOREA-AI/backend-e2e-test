@@ -10,7 +10,7 @@ on:
         options: ["27", "26", "195"]
 
 jobs:
-  e2e-test-secrets:
+  e2e-test:
     uses: SYSTRAN-KOREA-AI/.github/.github/workflows/deploy-spring-template.yml@main
     with:
       SERVICE_NAME: e2e-test
