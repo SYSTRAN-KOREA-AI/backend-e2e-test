@@ -10,44 +10,48 @@ on:
         options: ["195", "26", "27"]
 
 jobs:
-  deploy-195:
-    if: github.event.inputs.server == '195'
-    uses: SYSTRAN-KOREA-AI/.github/.github/workflows/deploy-spring-template.yml@ba62d70a3b13f750a37b77b490508932a2ea91e6
-    with:
-      service_name: e2e-test
-      target_host: ${{ secrets.SERVER_195_HOST }}
-      target_port: ${{ secrets.SERVER_195_PORT }}
-      target_user: ${{ secrets.SERVER_195_USER }}
-    secrets:
-      TARGET_KEY: ${{ secrets.SERVER_195_KEY }}
-      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-      DOCKER_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
-      APP_YML: ${{ secrets.APP_YML }}
+  deploy:
+    runs-on: ubuntu-latest
 
-  deploy-26:
-    if: github.event.inputs.server == '26'
-    uses: SYSTRAN-KOREA-AI/.github/.github/workflows/deploy-spring-template.yml@ba62d70a3b13f750a37b77b490508932a2ea91e6
-    with:
-      service_name: e2e-test
-      target_host: ${{ secrets.SERVER_26_HOST }}
-      target_port: ${{ secrets.SERVER_26_PORT }}
-      target_user: ${{ secrets.SERVER_26_USER }}
-    secrets:
-      TARGET_KEY: ${{ secrets.SERVER_26_KEY }}
-      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-      DOCKER_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
-      APP_YML: ${{ secrets.APP_YML }}
+    steps:
+      # 1) 코드 checkout
+      - name: Checkout
+        uses: actions/checkout@v4
 
-  deploy-27:
-    if: github.event.inputs.server == '27'
-    uses: SYSTRAN-KOREA-AI/.github/.github/workflows/deploy-spring-template.yml@ba62d70a3b13f750a37b77b490508932a2ea91e6
-    with:
-      service_name: e2e-test
-      target_host: ${{ secrets.SERVER_27_HOST }}
-      target_port: ${{ secrets.SERVER_27_PORT }}
-      target_user: ${{ secrets.SERVER_27_USER }}
-    secrets:
-      TARGET_KEY: ${{ secrets.SERVER_27_KEY }}
-      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-      DOCKER_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
-      APP_YML: ${{ secrets.APP_YML }}
+      # 2) 선택한 서버에 따라 HOST/PORT/USER/KEY을 환경변수로 변환
+      - name: Map selected server
+        id: map
+        run: |
+          SERVER="${{ github.event.inputs.server }}"
+
+          if [ "$SERVER" = "195" ]; then
+            echo "HOST=${{ secrets.SERVER_195_HOST }}" >> $GITHUB_OUTPUT
+            echo "PORT=${{ secrets.SERVER_195_PORT }}" >> $GITHUB_OUTPUT
+            echo "USER=${{ secrets.SERVER_195_USER }}" >> $GITHUB_OUTPUT
+            echo "${{ secrets.SERVER_195_KEY }}" | base64 -d > private_key
+          elif [ "$SERVER" = "26" ]; then
+            echo "HOST=${{ secrets.SERVER_26_HOST }}" >> $GITHUB_OUTPUT
+            echo "PORT=${{ secrets.SERVER_26_PORT }}" >> $GITHUB_OUTPUT
+            echo "USER=${{ secrets.SERVER_26_USER }}" >> $GITHUB_OUTPUT
+            echo "${{ secrets.SERVER_26_KEY }}" | base64 -d > private_key
+          elif [ "$SERVER" = "27" ]; then
+            echo "HOST=${{ secrets.SERVER_27_HOST }}" >> $GITHUB_OUTPUT
+            echo "PORT=${{ secrets.SERVER_27_PORT }}" >> $GITHUB_OUTPUT
+            echo "USER=${{ secrets.SERVER_27_USER }}" >> $GITHUB_OUTPUT
+            echo "${{ secrets.SERVER_27_KEY }}" | base64 -d > private_key
+          fi
+
+          chmod 600 private_key
+
+      # 3) 템플릿 호출
+      - name: Call deploy template
+        uses: SYSTRAN-KOREA-AI/.github/.github/workflows/deploy-spring-template.yml@5e704fe5d8e6d7290f00356fa8a3d3cc73c6afa2
+        with:
+          service_name: e2e-test  # 이 레포는 e2e-test 전용이므로 하드코딩해도 OK
+          target_host: ${{ steps.map.outputs.HOST }}
+          target_port: ${{ steps.map.outputs.PORT }}
+          target_user: ${{ steps.map.outputs.USER }}
+        secrets:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          TARGET_KEY: ${{ steps.map.outputs.private_key }}
