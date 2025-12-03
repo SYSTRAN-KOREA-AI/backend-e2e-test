@@ -14,27 +14,27 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1) 코드 checkout
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 2) 선택한 서버에 따라 HOST/PORT/USER/KEY을 환경변수로 변환
-      - name: Map selected server
+      - name: Map server outputs
         id: map
         run: |
-          SERVER="${{ github.event.inputs.server }}"
+          SV="${{ github.event.inputs.server }}"
 
-          if [ "$SERVER" = "195" ]; then
+          if [ "$SV" = "195" ]; then
             echo "HOST=${{ secrets.SERVER_195_HOST }}" >> $GITHUB_OUTPUT
             echo "PORT=${{ secrets.SERVER_195_PORT }}" >> $GITHUB_OUTPUT
             echo "USER=${{ secrets.SERVER_195_USER }}" >> $GITHUB_OUTPUT
             echo "${{ secrets.SERVER_195_KEY }}" | base64 -d > private_key
-          elif [ "$SERVER" = "26" ]; then
+
+          elif [ "$SV" = "26" ]; then
             echo "HOST=${{ secrets.SERVER_26_HOST }}" >> $GITHUB_OUTPUT
             echo "PORT=${{ secrets.SERVER_26_PORT }}" >> $GITHUB_OUTPUT
             echo "USER=${{ secrets.SERVER_26_USER }}" >> $GITHUB_OUTPUT
             echo "${{ secrets.SERVER_26_KEY }}" | base64 -d > private_key
-          elif [ "$SERVER" = "27" ]; then
+
+          elif [ "$SV" = "27" ]; then
             echo "HOST=${{ secrets.SERVER_27_HOST }}" >> $GITHUB_OUTPUT
             echo "PORT=${{ secrets.SERVER_27_PORT }}" >> $GITHUB_OUTPUT
             echo "USER=${{ secrets.SERVER_27_USER }}" >> $GITHUB_OUTPUT
@@ -43,15 +43,18 @@ jobs:
 
           chmod 600 private_key
 
-      # 3) 템플릿 호출
-      - name: Call deploy template
+          echo "TARGET_KEY<<EOF" >> $GITHUB_ENV
+          cat private_key >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
+      - name: Call deployment template
         uses: SYSTRAN-KOREA-AI/.github/.github/workflows/deploy-spring-template.yml@5e704fe5d8e6d7290f00356fa8a3d3cc73c6afa2
         with:
-          service_name: e2e-test  # 이 레포는 e2e-test 전용이므로 하드코딩해도 OK
+          service_name: e2e-test
           target_host: ${{ steps.map.outputs.HOST }}
           target_port: ${{ steps.map.outputs.PORT }}
           target_user: ${{ steps.map.outputs.USER }}
-        secrets:
+        env:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
-          TARGET_KEY: ${{ steps.map.outputs.private_key }}
+          TARGET_KEY: ${{ env.TARGET_KEY }}
