@@ -1,0 +1,66 @@
+name: Backend Deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      server:
+        description: "배포할 서버 선택"
+        required: true
+        type: choice
+        options: ["195", "26", "27"]
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      HOST: ${{ steps.out.outputs.HOST }}
+      PORT: ${{ steps.out.outputs.PORT }}
+      USER: ${{ steps.out.outputs.USER }}
+      TARGET_KEY: ${{ steps.out.outputs.TARGET_KEY }}
+
+    steps:
+      - name: Map selected server
+        id: out
+        run: |
+          SV="${{ github.event.inputs.server }}"
+
+          if [ "$SV" = "195" ]; then
+            HOST="${{ secrets.SERVER_195_HOST }}"
+            PORT="${{ secrets.SERVER_195_PORT }}"
+            USER="${{ secrets.SERVER_195_USER }}"
+            KEY=$(echo "${{ secrets.SERVER_195_KEY }}" | base64 -d)
+          elif [ "$SV" = "26" ]; then
+            HOST="${{ secrets.SERVER_26_HOST }}"
+            PORT="${{ secrets.SERVER_26_PORT }}"
+            USER="${{ secrets.SERVER_26_USER }}"
+            KEY=$(echo "${{ secrets.SERVER_26_KEY }}" | base64 -d)
+          elif [ "$SV" = "27" ]; then
+            HOST="${{ secrets.SERVER_27_HOST }}"
+            PORT="${{ secrets.SERVER_27_PORT }}"
+            USER="${{ secrets.SERVER_27_USER }}"
+            KEY=$(echo "${{ secrets.SERVER_27_KEY }}" | base64 -d)
+          fi
+
+          echo "HOST=$HOST" >> $GITHUB_OUTPUT
+          echo "PORT=$PORT" >> $GITHUB_OUTPUT
+          echo "USER=$USER" >> $GITHUB_OUTPUT
+
+          {
+            echo "TARGET_KEY<<EOF"
+            echo "$KEY"
+            echo "EOF"
+          } >> $GITHUB_OUTPUT
+
+  deploy:
+    uses: SYSTRAN-KOREA-AI/.github/.github/workflows/deploy-spring-template.yml@main
+    needs: prepare
+    with:
+      service_name: e2e-test
+      target_host: ${{ needs.prepare.outputs.HOST }}
+      target_port: ${{ needs.prepare.outputs.PORT }}
+      target_user: ${{ needs.prepare.outputs.USER }}
+    secrets:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+      TARGET_KEY: ${{ needs.prepare.outputs.TARGET_KEY }}
+      APP_YML: ${{ secrets.APP_YML }}
