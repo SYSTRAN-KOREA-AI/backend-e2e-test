@@ -14,6 +14,7 @@ jobs:
     uses: SYSTRAN-KOREA-AI/.github/.github/workflows/deploy-spring-template.yml@main
     with:
       SERVICE_NAME: e2e-test
+      TARGET_REMOTE_PATH: /opt/business_meeting
     secrets:
       # Pass static secrets directly
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
