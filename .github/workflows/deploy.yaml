@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       server:
-        description: "배포할 서버를 선택하세요."
+        description: "배포할 서버 선택"
         required: true
         type: choice
         options: ["195", "26", "27"]
