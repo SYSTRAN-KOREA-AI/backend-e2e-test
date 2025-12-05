@@ -23,6 +23,7 @@ jobs:
       APP_PROD_YML: ${{ secrets.APP_PROD_YML }}
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
       DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
       PREFIX_HOST: ${{ github.event.inputs.server == '195' && secrets.SERVER_195_HOST || github.event.inputs.server == '26' && secrets.SERVER_26_HOST || secrets.SERVER_27_HOST }}
       PREFIX_PORT: ${{ github.event.inputs.server == '195' && secrets.SERVER_195_PORT || github.event.inputs.server == '26' && secrets.SERVER_26_PORT || secrets.SERVER_27_PORT }}
       PREFIX_USER: ${{ github.event.inputs.server == '195' && secrets.SERVER_195_USER || github.event.inputs.server == '26' && secrets.SERVER_26_USER || secrets.SERVER_27_USER }}
