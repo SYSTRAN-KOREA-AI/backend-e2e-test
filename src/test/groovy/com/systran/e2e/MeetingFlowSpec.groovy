@@ -111,6 +111,98 @@ class MeetingFlowSpec extends Specification {
         return allReady
     }
 
+    private Map<String, Object> waitForQuietPeriodWithTranslation(
+            List<TestParticipant> allParticipants,
+            List<TestParticipant> englishListeners,
+            long timeoutSeconds
+    ) {
+        def pollingConditions = new PollingConditions(timeout: timeoutSeconds, initialDelay: 3)
+        def lastActivityTime = new ConcurrentHashMap<String, Long>()
+        allParticipants.each { p -> lastActivityTime.put(p.name, System.currentTimeMillis()) }
+
+        def lastFinalTranscriptionTimestamp = new AtomicLong(0)
+        def lastFinalTranslationTimestamp = new AtomicLong(0)
+        def maxIndexesBySpeaker = new ConcurrentHashMap<String, Integer>()
+        def finalTranslationCountByListener = new ConcurrentHashMap<String, Integer>()
+
+        pollingConditions.eventually {
+            def now = System.currentTimeMillis()
+            def allQueuesCurrentlyEmpty = true
+
+            allParticipants.each { p ->
+                def transcriptionQueue = p.transcriptionQueue
+                if (transcriptionQueue != null && !transcriptionQueue.isEmpty()) {
+                    allQueuesCurrentlyEmpty = false
+                    lastActivityTime.put(p.name, now)
+
+                    def messages = []
+                    transcriptionQueue.drainTo(messages)
+                    messages.each { msg ->
+                        if (msg['isFullText'] == true) {
+                            long receivedAt = extractReceivedAt(msg, now)
+                            lastFinalTranscriptionTimestamp.set(receivedAt)
+                            def speakerName = msg['userName'] as String
+                            def currentMax = maxIndexesBySpeaker.get(speakerName) ?: 0
+                            def newIndex = msg['utteranceIdx'] as Integer
+                            if (newIndex > currentMax) {
+                                maxIndexesBySpeaker.put(speakerName, newIndex)
+                            }
+                        }
+                    }
+                }
+
+                def translationQueue = p.translationQueue
+                if (translationQueue != null && !translationQueue.isEmpty()) {
+                    allQueuesCurrentlyEmpty = false
+                    lastActivityTime.put(p.name, now)
+
+                    def translationMessages = []
+                    translationQueue.drainTo(translationMessages)
+                    translationMessages.each { msg ->
+                        boolean isFinal = msg['isFullText'] == true
+                        String translationText = msg['translationText']?.toString()
+                        if (isFinal && translationText != null && !translationText.isBlank()) {
+                            long receivedAt = extractReceivedAt(msg, now)
+                            lastFinalTranslationTimestamp.set(receivedAt)
+                            finalTranslationCountByListener.merge(p.name, 1) { oldValue, inc -> oldValue + inc }
+                        }
+                    }
+                }
+            }
+
+            def quietPeriodEnded = allParticipants.every { p ->
+                (now - (lastActivityTime.get(p.name) ?: now)) > 10000 // 10-second quiet period
+            }
+            def allEnglishListenersReceivedFinalTranslation = englishListeners.every { listener ->
+                (finalTranslationCountByListener.get(listener.name) ?: 0) > 0
+            }
+
+            assert allQueuesCurrentlyEmpty && quietPeriodEnded && allEnglishListenersReceivedFinalTranslation
+        }
+
+        return [
+                lastFinalTranscriptionTimestamp: lastFinalTranscriptionTimestamp.get(),
+                lastFinalTranslationTimestamp  : lastFinalTranslationTimestamp.get(),
+                maxIndexesBySpeaker           : maxIndexesBySpeaker,
+                finalTranslationCountByListener: finalTranslationCountByListener
+        ]
+    }
+
+    private long extractReceivedAt(Map msg, long fallbackNow) {
+        def raw = msg['__receivedAt']
+        if (raw == null) {
+            return fallbackNow
+        }
+        if (raw instanceof Number) {
+            return (raw as Number).longValue()
+        }
+        try {
+            return Long.parseLong(raw.toString())
+        } catch (Exception ignored) {
+            return fallbackNow
+        }
+    }
+
     /**
      * 모든 참여자의 리소스를 안전하게 정리한다.
      * @param participants 정리할 참여자 리스트
@@ -131,17 +223,18 @@ class MeetingFlowSpec extends Specification {
      * 5:
      */
     def "2 채널, 2명 동시 발화"() {
-        given: "4명의 고유한 한국인 사용자를 2개의 미팅룸에 할당"
+        given: "각 미팅룸당 한국어 발화자 1명과 영어 청중 1명을 2개의 미팅룸에 할당"
         def meetingId_A = "meeting-A-${System.currentTimeMillis()}"
         def meetingId_B = "meeting-B-${System.currentTimeMillis()}"
 
         def userA1 = createParticipant("userA1", "ko", false)
-        def userA2 = createParticipant("userA2", "ko", false)
+        def userA2 = createParticipant("userA2", "en", true)
         def participants_A = [userA1, userA2]
 
         def userB1 = createParticipant("userB1", "ko", false)
-        def userB2 = createParticipant("userB2", "ko", false)
+        def userB2 = createParticipant("userB2", "en", true)
         def participants_B = [userB1, userB2]
+        def englishListeners = [userA2, userB2]
 
         connectAll(participants_A, meetingId_A)
         connectAll(participants_B, meetingId_B)
@@ -153,7 +246,10 @@ class MeetingFlowSpec extends Specification {
         when: "두 채널에서 오디오를 동시에 전송하고, 전송이 모두 끝날 때까지 기다림"
         def executor = Executors.newFixedThreadPool(2)
         def allParticipants = participants_A + participants_B
-        allParticipants.each { p -> p.transcriptionQueue?.clear() }
+        allParticipants.each { p ->
+            p.transcriptionQueue?.clear()
+            p.translationQueue?.clear()
+        }
 
         byte[] audioBytes = getClass().getResourceAsStream("/${AUDIO_FILE_PATH}").bytes
         byte[] audioBytesB = getClass().getResourceAsStream("/${AUDIO_FILE_PATH_B}").bytes
@@ -168,50 +264,15 @@ class MeetingFlowSpec extends Specification {
             executor.shutdown()
         }
 
-        then: "모든 스트림이 끝날 때까지 기다리며, 마지막 메시지 도착 시간을 기준으로 Latency를 측정한다"
-        def pollingConditions = new PollingConditions(timeout: 120, initialDelay: 3)
-        def lastActivityTime = new ConcurrentHashMap<String, Long>()
-        allParticipants.each { p -> lastActivityTime.put(p.name, System.currentTimeMillis()) }
-
-        def lastFinalTranscriptionTimestamp = new AtomicLong(0)
-        def maxIndexes = new ConcurrentHashMap<String, Integer>()
-
-        pollingConditions.eventually {
-            def now = System.currentTimeMillis()
-            def allQueuesCurrentlyEmpty = true
-
-            allParticipants.each { p ->
-                def q = p.transcriptionQueue
-                if (q != null && !q.isEmpty()) {
-                    allQueuesCurrentlyEmpty = false
-                    lastActivityTime.put(p.name, now)
-
-                    def messages = []
-                    q.drainTo(messages)
-                    messages.each { msg ->
-                        if (msg['isFullText'] == true) {
-                            lastFinalTranscriptionTimestamp.set(now)
-                            def speakerName = msg['userName'] as String
-                            def currentMax = maxIndexes.get(speakerName) ?: 0
-                            def newIndex = msg['utteranceIdx'] as Integer
-                            if (newIndex > currentMax) {
-                                maxIndexes.put(speakerName, newIndex)
-                            }
-                        }
-                    }
-                }
-            }
-
-            def quietPeriodEnded = allParticipants.every { p ->
-                (now - lastActivityTime.get(p.name)) > 10000 // 10-second quiet period
-            }
-
-            assert allQueuesCurrentlyEmpty && quietPeriodEnded
-        }
-
-        long latency = lastFinalTranscriptionTimestamp.get() > 0 ? (lastFinalTranscriptionTimestamp.get() - startTime) : 0
-        println "[Transcription Latency 2 Channel] E2E Latency (to last final message): ${latency} ms"
+        then: "모든 스트림이 끝난 뒤 영어 청중의 최종 번역 수신까지 완료될 때까지 대기하고 Latency를 측정한다"
+        def summary = waitForQuietPeriodWithTranslation(allParticipants, englishListeners, 120)
+        long lastFinalTranslationTimestamp = summary.lastFinalTranslationTimestamp as long
+        long latency = lastFinalTranslationTimestamp > 0 ? (lastFinalTranslationTimestamp - startTime) : 0
+        def maxIndexes = summary.maxIndexesBySpeaker as Map<String, Integer>
+        def translationCounts = summary.finalTranslationCountByListener as Map<String, Integer>
+        println "[Translation Latency 2 Channel] SpeechStartToLastFinalTranslation: ${latency} ms"
         println "Final max index for userA1: ${maxIndexes.get('userA1') ?: 'N/A'}, for userB1: ${maxIndexes.get('userB1') ?: 'N/A'}"
+        println "Final translation count for userA2: ${translationCounts.get('userA2') ?: 0}, for userB2: ${translationCounts.get('userB2') ?: 0}"
 
         and: "미팅룸 간 교차 오염이 없는지 확인"
         println "Cross-contamination check is implicitly passed by successful stream completion."
@@ -232,27 +293,28 @@ class MeetingFlowSpec extends Specification {
      * 5:
      */
     def "미팅룸 4개 운영, 4명 동시 발화"() {
-        given: "8명의 고유한 한국인 사용자를 4개의 미팅룸에 할당"
+        given: "각 미팅룸당 한국어 발화자 1명과 영어 청중 1명을 4개의 미팅룸에 할당"
         def meetingId_A = "meeting-A-${System.currentTimeMillis()}"
         def meetingId_B = "meeting-B-${System.currentTimeMillis()}"
         def meetingId_C = "meeting-C-${System.currentTimeMillis()}"
         def meetingId_D = "meeting-D-${System.currentTimeMillis()}"
 
         def userA1 = createParticipant("userA1", "ko", false)
-        def userA2 = createParticipant("userA2", "ko", false)
+        def userA2 = createParticipant("userA2", "en", true)
         def participants_A = [userA1, userA2]
 
         def userB1 = createParticipant("userB1", "ko", false)
-        def userB2 = createParticipant("userB2", "ko", false)
+        def userB2 = createParticipant("userB2", "en", true)
         def participants_B = [userB1, userB2]
 
         def userC1 = createParticipant("userC1", "ko", false)
-        def userC2 = createParticipant("userC2", "ko", false)
+        def userC2 = createParticipant("userC2", "en", true)
         def participants_C = [userC1, userC2]
 
         def userD1 = createParticipant("userD1", "ko", false)
-        def userD2 = createParticipant("userD2", "ko", false)
+        def userD2 = createParticipant("userD2", "en", true)
         def participants_D = [userD1, userD2]
+        def englishListeners = [userA2, userB2, userC2, userD2]
 
         connectAll(participants_A, meetingId_A)
         connectAll(participants_B, meetingId_B)
@@ -268,7 +330,10 @@ class MeetingFlowSpec extends Specification {
         when: "4개의 채널에서 오디오를 동시에 전송하고, 전송이 모두 끝날 때까지 기다림"
         def executor = Executors.newFixedThreadPool(5)
         def allParticipants = participants_A + participants_B + participants_C + participants_D
-        allParticipants.each { p -> p.transcriptionQueue?.clear() }
+        allParticipants.each { p ->
+            p.transcriptionQueue?.clear()
+            p.translationQueue?.clear()
+        }
 
         byte[] audioBytesA = getClass().getResourceAsStream("/${AUDIO_FILE_PATH}").bytes
         byte[] audioBytesB = getClass().getResourceAsStream("/${AUDIO_FILE_PATH_B}").bytes
@@ -288,50 +353,15 @@ class MeetingFlowSpec extends Specification {
             executor.shutdown()
         }
 
-        then: "모든 스트림이 끝날 때까지 기다리며, 마지막 메시지 도착 시간을 기준으로 Latency를 측정한다"
-        def pollingConditions = new PollingConditions(timeout: 120, initialDelay: 3)
-        def lastActivityTime = new ConcurrentHashMap<String, Long>()
-        allParticipants.each { p -> lastActivityTime.put(p.name, System.currentTimeMillis()) }
-
-        def lastFinalTranscriptionTimestamp = new AtomicLong(0)
-        def maxIndexes = new ConcurrentHashMap<String, Integer>()
-
-        pollingConditions.eventually {
-            def now = System.currentTimeMillis()
-            def allQueuesCurrentlyEmpty = true
-
-            allParticipants.each { p ->
-                def q = p.transcriptionQueue
-                if (q != null && !q.isEmpty()) {
-                    allQueuesCurrentlyEmpty = false
-                    lastActivityTime.put(p.name, now)
-
-                    def messages = []
-                    q.drainTo(messages)
-                    messages.each { msg ->
-                        if (msg['isFullText'] == true) {
-                            lastFinalTranscriptionTimestamp.set(now)
-                            def speakerName = msg['userName'] as String
-                            def currentMax = maxIndexes.get(speakerName) ?: 0
-                            def newIndex = msg['utteranceIdx'] as Integer
-                            if (newIndex > currentMax) {
-                                maxIndexes.put(speakerName, newIndex)
-                            }
-                        }
-                    }
-                }
-            }
-
-            def quietPeriodEnded = allParticipants.every { p ->
-                (now - lastActivityTime.get(p.name)) > 10000 // 10-second quiet period
-            }
-
-            assert allQueuesCurrentlyEmpty && quietPeriodEnded
-        }
-
-        long latency = lastFinalTranscriptionTimestamp.get() > 0 ? (lastFinalTranscriptionTimestamp.get() - startTime) : 0
-        println "[Transcription Latency 4 Channel] E2E Latency (to last final message): ${latency} ms"
+        then: "모든 스트림이 끝난 뒤 영어 청중의 최종 번역 수신까지 완료될 때까지 대기하고 Latency를 측정한다"
+        def summary = waitForQuietPeriodWithTranslation(allParticipants, englishListeners, 120)
+        long lastFinalTranslationTimestamp = summary.lastFinalTranslationTimestamp as long
+        long latency = lastFinalTranslationTimestamp > 0 ? (lastFinalTranslationTimestamp - startTime) : 0
+        def maxIndexes = summary.maxIndexesBySpeaker as Map<String, Integer>
+        def translationCounts = summary.finalTranslationCountByListener as Map<String, Integer>
+        println "[Translation Latency 4 Channel] SpeechStartToLastFinalTranslation: ${latency} ms"
         println "Final max index for userA1: ${maxIndexes.get('userA1') ?: 'N/A'}, for userB1: ${maxIndexes.get('userB1') ?: 'N/A'}"
+        println "Final translation counts: userA2=${translationCounts.get('userA2') ?: 0}, userB2=${translationCounts.get('userB2') ?: 0}, userC2=${translationCounts.get('userC2') ?: 0}, userD2=${translationCounts.get('userD2') ?: 0}"
 
         and: "미팅룸 간 교차 오염이 없는지 확인"
         println "Cross-contamination check is implicitly passed by successful stream completion."
@@ -348,7 +378,7 @@ class MeetingFlowSpec extends Specification {
     }
 
     def "미팅룸 6개 운영, 6명 동시 발화"() {
-        given: "12명의 고유한 한국인 사용자를 6개의 미팅룸에 할당"
+        given: "각 미팅룸당 한국어 발화자 1명과 영어 청중 1명을 6개의 미팅룸에 할당"
         def meetingId_A = "meeting-A-${System.currentTimeMillis()}"
         def meetingId_B = "meeting-B-${System.currentTimeMillis()}"
         def meetingId_C = "meeting-C-${System.currentTimeMillis()}"
@@ -357,28 +387,29 @@ class MeetingFlowSpec extends Specification {
         def meetingId_F = "meeting-F-${System.currentTimeMillis()}"
 
         def userA1 = createParticipant("userA1", "ko", false)
-        def userA2 = createParticipant("userA2", "ko", false)
+        def userA2 = createParticipant("userA2", "en", true)
         def participants_A = [userA1, userA2]
 
         def userB1 = createParticipant("userB1", "ko", false)
-        def userB2 = createParticipant("userB2", "ko", false)
+        def userB2 = createParticipant("userB2", "en", true)
         def participants_B = [userB1, userB2]
 
         def userC1 = createParticipant("userC1", "ko", false)
-        def userC2 = createParticipant("userC2", "ko", false)
+        def userC2 = createParticipant("userC2", "en", true)
         def participants_C = [userC1, userC2]
 
         def userD1 = createParticipant("userD1", "ko", false)
-        def userD2 = createParticipant("userD2", "ko", false)
+        def userD2 = createParticipant("userD2", "en", true)
         def participants_D = [userD1, userD2]
 
         def userE1 = createParticipant("userE1", "ko", false)
-        def userE2 = createParticipant("userE2", "ko", false)
+        def userE2 = createParticipant("userE2", "en", true)
         def participants_E = [userE1, userE2]
 
         def userF1 = createParticipant("userF1", "ko", false)
-        def userF2 = createParticipant("userF2", "ko", false)
+        def userF2 = createParticipant("userF2", "en", true)
         def participants_F = [userF1, userF2]
+        def englishListeners = [userA2, userB2, userC2, userD2, userE2, userF2]
 
         connectAll(participants_A, meetingId_A)
         connectAll(participants_B, meetingId_B)
@@ -398,7 +429,10 @@ class MeetingFlowSpec extends Specification {
         when: "6개의 채널에서 오디오를 동시에 전송하고, 전송이 모두 끝날 때까지 기다림"
         def executor = Executors.newFixedThreadPool(8)
         def allParticipants = participants_A + participants_B + participants_C + participants_D + participants_E + participants_F
-        allParticipants.each { p -> p.transcriptionQueue?.clear() }
+        allParticipants.each { p ->
+            p.transcriptionQueue?.clear()
+            p.translationQueue?.clear()
+        }
 
         byte[] audioBytesA = getClass().getResourceAsStream("/${AUDIO_FILE_PATH}").bytes
         byte[] audioBytesB = getClass().getResourceAsStream("/${AUDIO_FILE_PATH_B}").bytes
@@ -422,50 +456,15 @@ class MeetingFlowSpec extends Specification {
             executor.shutdown()
         }
 
-        then: "모든 스트림이 끝날 때까지 기다리며, 마지막 메시지 도착 시간을 기준으로 Latency를 측정한다"
-        def pollingConditions = new PollingConditions(timeout: 120, initialDelay: 3)
-        def lastActivityTime = new ConcurrentHashMap<String, Long>()
-        allParticipants.each { p -> lastActivityTime.put(p.name, System.currentTimeMillis()) }
-
-        def lastFinalTranscriptionTimestamp = new AtomicLong(0)
-        def maxIndexes = new ConcurrentHashMap<String, Integer>()
-
-        pollingConditions.eventually {
-            def now = System.currentTimeMillis()
-            def allQueuesCurrentlyEmpty = true
-
-            allParticipants.each { p ->
-                def q = p.transcriptionQueue
-                if (q != null && !q.isEmpty()) {
-                    allQueuesCurrentlyEmpty = false
-                    lastActivityTime.put(p.name, now)
-
-                    def messages = []
-                    q.drainTo(messages)
-                    messages.each { msg ->
-                        if (msg['isFullText'] == true) {
-                            lastFinalTranscriptionTimestamp.set(now)
-                            def speakerName = msg['userName'] as String
-                            def currentMax = maxIndexes.get(speakerName) ?: 0
-                            def newIndex = msg['utteranceIdx'] as Integer
-                            if (newIndex > currentMax) {
-                                maxIndexes.put(speakerName, newIndex)
-                            }
-                        }
-                    }
-                }
-            }
-
-            def quietPeriodEnded = allParticipants.every { p ->
-                (now - lastActivityTime.get(p.name)) > 10000 // 10-second quiet period
-            }
-
-            assert allQueuesCurrentlyEmpty && quietPeriodEnded
-        }
-
-        long latency = lastFinalTranscriptionTimestamp.get() > 0 ? (lastFinalTranscriptionTimestamp.get() - startTime) : 0
-        println "[Transcription Latency 6 Channel] E2E Latency (to last final message): ${latency} ms"
+        then: "모든 스트림이 끝난 뒤 영어 청중의 최종 번역 수신까지 완료될 때까지 대기하고 Latency를 측정한다"
+        def summary = waitForQuietPeriodWithTranslation(allParticipants, englishListeners, 120)
+        long lastFinalTranslationTimestamp = summary.lastFinalTranslationTimestamp as long
+        long latency = lastFinalTranslationTimestamp > 0 ? (lastFinalTranslationTimestamp - startTime) : 0
+        def maxIndexes = summary.maxIndexesBySpeaker as Map<String, Integer>
+        def translationCounts = summary.finalTranslationCountByListener as Map<String, Integer>
+        println "[Translation Latency 6 Channel] SpeechStartToLastFinalTranslation: ${latency} ms"
         println "Final max index for userA1: ${maxIndexes.get('userA1') ?: 'N/A'}, for userB1: ${maxIndexes.get('userB1') ?: 'N/A'}"
+        println "Final translation counts: userA2=${translationCounts.get('userA2') ?: 0}, userB2=${translationCounts.get('userB2') ?: 0}, userC2=${translationCounts.get('userC2') ?: 0}, userD2=${translationCounts.get('userD2') ?: 0}, userE2=${translationCounts.get('userE2') ?: 0}, userF2=${translationCounts.get('userF2') ?: 0}"
 
         and: "미팅룸 간 교차 오염이 없는지 확인"
         println "Cross-contamination check is implicitly passed by successful stream completion."
@@ -484,7 +483,7 @@ class MeetingFlowSpec extends Specification {
     }
 
     def "미팅룸 8개 운영, 8명 동시 발화"() {
-        given: "16명의 고유한 한국인 사용자를 8개의 미팅룸에 할당"
+        given: "각 미팅룸당 한국어 발화자 1명과 영어 청중 1명을 8개의 미팅룸에 할당"
         def meetingId_A = "meeting-A-${System.currentTimeMillis()}"
         def meetingId_B = "meeting-B-${System.currentTimeMillis()}"
         def meetingId_C = "meeting-C-${System.currentTimeMillis()}"
@@ -495,36 +494,37 @@ class MeetingFlowSpec extends Specification {
         def meetingId_H = "meeting-H-${System.currentTimeMillis()}"
 
         def userA1 = createParticipant("userA1", "ko", false)
-        def userA2 = createParticipant("userA2", "ko", false)
+        def userA2 = createParticipant("userA2", "en", true)
         def participants_A = [userA1, userA2]
 
         def userB1 = createParticipant("userB1", "ko", false)
-        def userB2 = createParticipant("userB2", "ko", false)
+        def userB2 = createParticipant("userB2", "en", true)
         def participants_B = [userB1, userB2]
 
         def userC1 = createParticipant("userC1", "ko", false)
-        def userC2 = createParticipant("userC2", "ko", false)
+        def userC2 = createParticipant("userC2", "en", true)
         def participants_C = [userC1, userC2]
 
         def userD1 = createParticipant("userD1", "ko", false)
-        def userD2 = createParticipant("userD2", "ko", false)
+        def userD2 = createParticipant("userD2", "en", true)
         def participants_D = [userD1, userD2]
 
         def userE1 = createParticipant("userE1", "ko", false)
-        def userE2 = createParticipant("userE2", "ko", false)
+        def userE2 = createParticipant("userE2", "en", true)
         def participants_E = [userE1, userE2]
 
         def userF1 = createParticipant("userF1", "ko", false)
-        def userF2 = createParticipant("userF2", "ko", false)
+        def userF2 = createParticipant("userF2", "en", true)
         def participants_F = [userF1, userF2]
 
         def userG1 = createParticipant("userG1", "ko", false)
-        def userG2 = createParticipant("userG2", "ko", false)
+        def userG2 = createParticipant("userG2", "en", true)
         def participants_G = [userG1, userG2]
 
         def userH1 = createParticipant("userH1", "ko", false)
-        def userH2 = createParticipant("userH2", "ko", false)
+        def userH2 = createParticipant("userH2", "en", true)
         def participants_H = [userH1, userH2]
+        def englishListeners = [userA2, userB2, userC2, userD2, userE2, userF2, userG2, userH2]
 
         connectAll(participants_A, meetingId_A)
         connectAll(participants_B, meetingId_B)
@@ -548,7 +548,10 @@ class MeetingFlowSpec extends Specification {
         when: "8개의 채널에서 오디오를 동시에 전송하고, 전송이 모두 끝날 때까지 기다림"
         def executor = Executors.newFixedThreadPool(8)
         def allParticipants = participants_A + participants_B + participants_C + participants_D + participants_E + participants_F + participants_G + participants_H
-        allParticipants.each { p -> p.transcriptionQueue?.clear() }
+        allParticipants.each { p ->
+            p.transcriptionQueue?.clear()
+            p.translationQueue?.clear()
+        }
 
         byte[] audioBytesA = getClass().getResourceAsStream("/${AUDIO_FILE_PATH}").bytes
         byte[] audioBytesB = getClass().getResourceAsStream("/${AUDIO_FILE_PATH_B}").bytes
@@ -576,50 +579,15 @@ class MeetingFlowSpec extends Specification {
             executor.shutdown()
         }
 
-        then: "모든 스트림이 끝날 때까지 기다리며, 마지막 메시지 도착 시간을 기준으로 Latency를 측정한다"
-        def pollingConditions = new PollingConditions(timeout: 120, initialDelay: 3)
-        def lastActivityTime = new ConcurrentHashMap<String, Long>()
-        allParticipants.each { p -> lastActivityTime.put(p.name, System.currentTimeMillis()) }
-
-        def lastFinalTranscriptionTimestamp = new AtomicLong(0)
-        def maxIndexes = new ConcurrentHashMap<String, Integer>()
-
-        pollingConditions.eventually {
-            def now = System.currentTimeMillis()
-            def allQueuesCurrentlyEmpty = true
-
-            allParticipants.each { p ->
-                def q = p.transcriptionQueue
-                if (q != null && !q.isEmpty()) {
-                    allQueuesCurrentlyEmpty = false
-                    lastActivityTime.put(p.name, now)
-
-                    def messages = []
-                    q.drainTo(messages)
-                    messages.each { msg ->
-                        if (msg['isFullText'] == true) {
-                            lastFinalTranscriptionTimestamp.set(now)
-                            def speakerName = msg['userName'] as String
-                            def currentMax = maxIndexes.get(speakerName) ?: 0
-                            def newIndex = msg['utteranceIdx'] as Integer
-                            if (newIndex > currentMax) {
-                                maxIndexes.put(speakerName, newIndex)
-                            }
-                        }
-                    }
-                }
-            }
-
-            def quietPeriodEnded = allParticipants.every { p ->
-                (now - lastActivityTime.get(p.name)) > 10000 // 10-second quiet period
-            }
-
-            assert allQueuesCurrentlyEmpty && quietPeriodEnded
-        }
-
-        long latency = lastFinalTranscriptionTimestamp.get() > 0 ? (lastFinalTranscriptionTimestamp.get() - startTime) : 0
-        println "[Transcription Latency 8 Channel] E2E Latency (to last final message): ${latency} ms"
+        then: "모든 스트림이 끝난 뒤 영어 청중의 최종 번역 수신까지 완료될 때까지 대기하고 Latency를 측정한다"
+        def summary = waitForQuietPeriodWithTranslation(allParticipants, englishListeners, 120)
+        long lastFinalTranslationTimestamp = summary.lastFinalTranslationTimestamp as long
+        long latency = lastFinalTranslationTimestamp > 0 ? (lastFinalTranslationTimestamp - startTime) : 0
+        def maxIndexes = summary.maxIndexesBySpeaker as Map<String, Integer>
+        def translationCounts = summary.finalTranslationCountByListener as Map<String, Integer>
+        println "[Translation Latency 8 Channel] SpeechStartToLastFinalTranslation: ${latency} ms"
         println "Final max index for userA1: ${maxIndexes.get('userA1') ?: 'N/A'}, for userB1: ${maxIndexes.get('userB1') ?: 'N/A'}"
+        println "Final translation counts: userA2=${translationCounts.get('userA2') ?: 0}, userB2=${translationCounts.get('userB2') ?: 0}, userC2=${translationCounts.get('userC2') ?: 0}, userD2=${translationCounts.get('userD2') ?: 0}, userE2=${translationCounts.get('userE2') ?: 0}, userF2=${translationCounts.get('userF2') ?: 0}, userG2=${translationCounts.get('userG2') ?: 0}, userH2=${translationCounts.get('userH2') ?: 0}"
 
         and: "미팅룸 간 교차 오염이 없는지 확인"
         println "Cross-contamination check is implicitly passed by successful stream completion."
