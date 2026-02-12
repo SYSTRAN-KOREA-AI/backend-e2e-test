@@ -28,6 +28,8 @@ import java.util.concurrent.TimeUnit;
 public class AudioSenderClient {
 
     private static final int CHUNK_SIZE = 2048; // Mimics the frontend (512 samples * 4 bytes/sample)
+    private static final String DEFAULT_DOMAIN = "Dialog";
+    private static final String DEFAULT_STT_ENGINE = "whisper";
     private final ClientManager clientManager;
     private final String userName;
     private final String jwtToken;
@@ -62,12 +64,16 @@ public class AudioSenderClient {
         this.session = session;
         log.info("AudioSenderClient: Connected to voice-gateway. Session: {}", session.getId());
 
-        // 1. 연결 성공 후, 서버에 'Authorization' 메시지를 보내 인증을 시도한다.
-        String authPayload = objectMapper.writeValueAsString(Map.of(
-                "type", "Authorization",
-                "token", jwtToken
+        // voice-gateway contract: client must send Register directly with token/user metadata.
+        String registerPayload = objectMapper.writeValueAsString(Map.of(
+                "type", "Register",
+                "token", "Bearer " + jwtToken,
+                "userName", this.userName,
+                "transcriptionLanguage", this.transcriptionLanguage,
+                "domain", DEFAULT_DOMAIN,
+                "sttEngine", DEFAULT_STT_ENGINE
         ));
-        session.getBasicRemote().sendText(authPayload);
+        session.getBasicRemote().sendText(registerPayload);
     }
 
     /**
@@ -80,19 +86,13 @@ public class AudioSenderClient {
             log.info("AudioSenderClient: Received message: {}", message);
             Map<String, String> response = objectMapper.readValue(message, Map.class);
 
-            if ("auth_ok".equals(response.get("type"))) {
-                // 2. 인증('auth_ok')에 성공하면, 'Register' 메시지를 보내 사용자 정보를 등록한다.
-                String registerPayload = objectMapper.writeValueAsString(Map.of(
-                        "type", "Register",
-                        "userName", this.userName,
-                        "transcriptionLanguage", this.transcriptionLanguage
-                ));
-                session.getBasicRemote().sendText(registerPayload);
-            } else if ("register_ok".equals(response.get("type"))) {
-                // 3. 등록('register_ok')까지 성공하면, 오디오를 보낼 준비가 완료된 것이다.
+            if ("register_ok".equals(response.get("type"))) {
+                // register_ok 수신 시 오디오 전송 준비 완료.
                 log.info("AudioSenderClient: User {} registered successfully.", this.userName);
                 registerLatch.countDown(); // isReady()에서 대기 중인 스레드를 깨운다.
+                return;
             }
+            log.warn("AudioSenderClient: Unexpected server message for user {}: {}", this.userName, response);
         }catch (IOException e) {
             log.error("AudioSenderClient: Failed to process or understand message. Ignoring. Error: {}", e.getMessage());
         }

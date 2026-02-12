@@ -17,6 +17,8 @@ import java.util.concurrent.TimeUnit;
 @Getter
 public class ResultReceiverClient {
 
+    private static final String RECEIVED_AT_KEY = "__receivedAt";
+
     private final WebSocketStompClient stompClient;
     private final String userName;
     private final String language;
@@ -64,7 +66,9 @@ public class ResultReceiverClient {
                     public void handleFrame(StompHeaders headers, Object payload) {
                         try {
                             log.info("ResultReceiverClient ({}): Transcription received: {}", userName, new String((byte[]) payload));
-                            transcriptionQueue.add(objectMapper.readValue((byte[]) payload, Map.class));
+                            Map message = objectMapper.readValue((byte[]) payload, Map.class);
+                            message.put(RECEIVED_AT_KEY, System.currentTimeMillis());
+                            transcriptionQueue.add(message);
                         } catch (Exception e) {
                             log.error("ResultReceiverClient ({}): Failed to parse transcription payload", userName, e);
                         }
@@ -84,7 +88,9 @@ public class ResultReceiverClient {
                         public void handleFrame(StompHeaders headers, Object payload) {
                             try {
                                 log.info("ResultReceiverClient ({}): Translation received: {}", userName, new String((byte[]) payload));
-                                translationQueue.add(objectMapper.readValue((byte[]) payload, Map.class));
+                                Map message = objectMapper.readValue((byte[]) payload, Map.class);
+                                message.put(RECEIVED_AT_KEY, System.currentTimeMillis());
+                                translationQueue.add(message);
                             } catch (Exception e) {
                                 log.error("ResultReceiverClient ({}): Failed to parse translation payload", userName, e);
                             }
